@@ -45,6 +45,8 @@ decode_krb5_tgs_rep
 decode_krb5_tgs_req
 decode_krb5_ticket
 decode_krb5_typed_data
+decode_krb5_pa_gss
+decode_krb5_pa_gss_state
 encode_krb5_ad_kdcissued
 encode_krb5_ad_signedpath_data
 encode_krb5_ad_signedpath
@@ -92,6 +94,8 @@ encode_krb5_tgs_rep
 encode_krb5_tgs_req
 encode_krb5_ticket
 encode_krb5_typed_data
+encode_krb5_pa_gss
+encode_krb5_pa_gss_state
 et_asn1_error_table
 et_k524_error_table
 et_kdb5_error_table

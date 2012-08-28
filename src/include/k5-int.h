@@ -2681,4 +2681,27 @@ krb5_set_error_message_fl(krb5_context ctx, krb5_error_code code,
 void krb5int_init_trace(krb5_context context);
 #endif
 
+/* GSS preauth */
+typedef struct _krb5_pa_gss_state {
+    krb5_timestamp pagssstate_time;
+    krb5_data pagssstate_expctx;
+} krb5_pa_gss_state;
+
+typedef struct _krb5_pa_gss {
+    krb5_data pagss_token;
+    krb5_enc_data pagss_state;
+} krb5_pa_gss;
+
+krb5_error_code encode_krb5_pa_gss_state(const krb5_pa_gss_state *rep, 
+                                         krb5_data **code_out);
+
+krb5_error_code decode_krb5_pa_gss_state(const krb5_data *code, 
+                                         krb5_pa_gss_state **rep_out);
+
+krb5_error_code encode_krb5_pa_gss(const krb5_pa_gss *rep, 
+                                         krb5_data **code_out);
+
+krb5_error_code decode_krb5_pa_gss(const krb5_data *code, 
+                                         krb5_pa_gss **rep_out);
+
 #endif /* _KRB5_INT_H */

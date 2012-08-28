@@ -1711,3 +1711,24 @@ static const struct atype_info *pa_otp_enc_req_fields[] = {
 };
 DEFSEQTYPE(pa_otp_enc_req, krb5_data, pa_otp_enc_req_fields);
 MAKE_CODEC(krb5_pa_otp_enc_req, pa_otp_enc_req);
+
+
+/* GSS preauth */
+DEFFIELD(pa_gss_0, krb5_pa_gss, pagss_token, 0, ostring_data);
+DEFFIELD(pa_gss_1, krb5_pa_gss, pagss_state, 1, opt_encrypted_data);
+static const struct atype_info *pa_gss_fields[] = {
+    &k5_atype_pa_gss_0, &k5_atype_pa_gss_1
+};
+DEFSEQTYPE(pa_gss, krb5_pa_gss, pa_gss_fields);
+
+DEFFIELD(pa_gss_state_0, krb5_pa_gss_state, pagssstate_time, 0, kerberos_time);
+DEFFIELD(pa_gss_state_1, krb5_pa_gss_state, pagssstate_expctx, 1, ostring_data);
+static const struct atype_info *pa_gss_state_fields[] = {
+    &k5_atype_pa_gss_state_0, &k5_atype_pa_gss_state_1
+};
+DEFSEQTYPE(pa_gss_state, krb5_pa_gss_state, pa_gss_state_fields);
+
+MAKE_CODEC(krb5_pa_gss_state, pa_gss_state);
+MAKE_CODEC(krb5_pa_gss, pa_gss);
+
+
