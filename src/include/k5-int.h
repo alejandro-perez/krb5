@@ -382,6 +382,8 @@ typedef INT64_TYPE krb5_int64;
                                                       not find a KDC */
 #define KRB_AP_ERR_IAKERB_KDC_NO_RESPONSE       86 /* The KDC did not respond
                                                       to the IAKERB proxy */
+#define KDC_ERR_MORE_PREAUTH_DATA_REQUIRED      91 /* More pre-authentication 
+                                                      data is required */ 
 
 /*
  * A null-terminated array of this structure is returned by the KDC as
