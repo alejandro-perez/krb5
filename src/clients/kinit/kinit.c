@@ -127,6 +127,9 @@ struct k_opts
 
     int canonicalize;
     int enterprise;
+
+    /* Selection of the PA_TYPE to be sent by default */
+    int patype;    
 };
 
 struct k5_data
@@ -286,7 +289,7 @@ parse_options(argc, argv, opts)
     int errflg = 0;
     int i;
 
-    while ((i = GETOPT(argc, argv, "r:fpFPn54aAVl:s:c:kit:T:RS:vX:CE"))
+    while ((i = GETOPT(argc, argv, "r:fpFPn54aAVl:s:c:kit:T:RS:vX:CEu:"))
            != -1) {
         switch (i) {
         case 'V':
@@ -404,6 +407,10 @@ parse_options(argc, argv, opts)
             break;
         case '5':
             break;
+        /* selection of the preauth type */
+        case 'u':
+            opts->patype = atoi(optarg);
+            break;                      
         default:
             errflg++;
             break;
@@ -733,6 +740,14 @@ k5_kinit(opts, k5)
 
     switch (opts->action) {
     case INIT_PW:
+        /* if default PA type is indicated */
+        if (opts->patype != 0){
+            krb5_preauthtype preauth[] = { opts->patype };
+            krb5_get_init_creds_opt_set_address_list(options, NULL);
+            krb5_get_init_creds_opt_set_preauth_list(options, preauth, 
+                sizeof(preauth)/sizeof(krb5_preauthtype));
+        }
+                
         code = krb5_get_init_creds_password(k5->ctx, &my_creds, k5->me,
                                             0, kinit_prompter, 0,
                                             opts->starttime,
