@@ -13,6 +13,7 @@ SUBDIRS=util include lib \
 	plugins/kdb/db2 \
 	@ldap_plugin_dir@ \
 	plugins/preauth/pkinit \
+	plugins/preauth/gssapi \
 	kdc kadmin slave clients appl tests \
 	config-files gen-manpages man doc @po@
 WINSUBDIRS=include util lib ccapi windows clients appl
