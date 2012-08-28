@@ -337,6 +337,7 @@ get_name_from_gss_credential(gss_cred_id_t credential,
     krb5_error_code rcode = 0;
     gss_name_t gss_name = GSS_C_NO_NAME;
     gss_buffer_desc gss_name_txt = GSS_C_EMPTY_BUFFER;
+    char *out = NULL;
     
     maj_stat = gss_inquire_cred(&min_stat, credential, &gss_name, NULL, 
                                 NULL, NULL);                                       
@@ -353,9 +354,11 @@ get_name_from_gss_credential(gss_cred_id_t credential,
         goto cleanup;                
     }                                 
 
-    *name_out = malloc(gss_name_txt.length + 1);
-    memcpy(*name_out, gss_name_txt.value, gss_name_txt.length);
-    *name_out[gss_name_txt.length] = '\0';
+    out = malloc(gss_name_txt.length + 1);
+    memcpy(out, gss_name_txt.value, gss_name_txt.length);
+    out[gss_name_txt.length] = '\0';
+    
+    *name_out = out;
     
 cleanup:
     gss_release_name(&min_stat, &gss_name);
@@ -477,6 +480,8 @@ process_as_rep(krb5_context context,
     krb5_enctype enctype = 0;   
     size_t keybytes = 0, keylen = 0;
     krb5_keyblock as_key; 
+    char *gssname = NULL;
+    krb5_principal new_principal = NULL;
     
     /* initilize keyblock to NULL */
     as_key.length = 0;
@@ -540,9 +545,27 @@ process_as_rep(krb5_context context,
     
     print_buffer("GSS-PA> Derived AS_KEY: ", as_key.contents, as_key.length);
     
+    /* update user's name to the one received via GSS, to avoid errors */
+    rcode = get_name_from_gss_credential(reqctx->client_cred, &gssname);
+    if (rcode)
+        goto cleanup;
+               
+    /* create a new cname. REALM is not required since we just copy the name */
+    rcode = krb5_build_principal(NULL, &new_principal, 0, "", gssname, NULL);
+    if (rcode)
+        goto cleanup;                                        
+        
+    /* copy the name */
+    request->client->data = new_principal->data;
+    request->client->length = new_principal->length;
+    new_principal->data = NULL;
+    new_principal->length = 0;
+    
 cleanup:
     gss_release_buffer(&min_stat, &prf_in);
-    gss_release_buffer(&min_stat, &prf_key);  
+    gss_release_buffer(&min_stat, &prf_key); 
+    free(gssname);
+    krb5_free_principal(context, new_principal); 
     krb5int_c_free_keyblock_contents(context, &as_key);      
     return rcode;
 }
