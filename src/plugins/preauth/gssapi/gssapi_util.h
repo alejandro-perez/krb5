@@ -33,15 +33,6 @@ void fill_pa_data_from_data(void *data, unsigned int length,
 /* prints the GSS error in a textual form */
 void display_gss_status(OM_uint32 maj_stat, OM_uint32 min_stat);
 
-/* decodes a PA-GSS into a GSS-TOKEN and a PA-GSS-STATE */
-krb5_error_code decode_pa_gss(krb5_pa_data* pa_gss, gss_buffer_t sec_ctx_token, 
-                              krb5_data **pa_gss_state_out);
-                              
-/* encodes a PA-GSS from a GSS-TOKEN and a PA-GSS-STATE */                              
-krb5_error_code encode_pa_gss(gss_buffer_t sec_ctx_token, 
-                              krb5_data* pa_gss_state, 
-                              krb5_pa_data** pa_gss_out);
-
 /* fills the channel_bindings struct with the encoded_request_body as
    application data */
 void fill_channel_bindings(krb5_data* encoded_request_body, 

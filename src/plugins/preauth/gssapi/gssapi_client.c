@@ -198,20 +198,37 @@ do_gss_init_sec_context(gss_ctx_id_t * context,
     OM_uint32 maj_stat = 0, min_stat = 0;
     gss_buffer_desc input_gss_token = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc output_gss_token = GSS_C_EMPTY_BUFFER;
-    krb5_data *state = NULL;
     struct gss_channel_bindings_struct channel_bindings;
-    krb5_error_code rcode = 0;
+    krb5_error_code rcode = 0;    
+    krb5_pa_gss *pa_gss_in = NULL, pa_gss_out;
+    krb5_data *temp = 0, temp_static;
+
     
+    /* init krb5_pa_gss */
+    pa_gss_out.pagss_token.length = 0;
+    pa_gss_out.pagss_token.data = NULL;
+    pa_gss_out.pagss_state.ciphertext.length = 0;
+    pa_gss_out.pagss_state.ciphertext.data = NULL;
+            
     /* set the output PA_DATA to NULL */
     if (padata_out != NULL)
         *padata_out = NULL;
 
     /* decode the input PA-GSS (if available) */
     if (padata_in != NULL){
-        rcode = decode_pa_gss(padata_in, &input_gss_token, &state);    
-        if (rcode)
+        temp_static.data = (char*) padata_in->contents;
+        temp_static.length  = padata_in->length;
+        rcode = decode_krb5_pa_gss(&temp_static, &pa_gss_in);    
+        if (rcode){
+            printf("GSS-PA> error decoding PA_GSS\n");
             goto cleanup;    
+        }
+
+        /* set upt he input_gss_token (alias) */
+        input_gss_token.length = pa_gss_in->pagss_token.length;
+        input_gss_token.value = pa_gss_in->pagss_token.data;
     }
+    
     
     /* Create channel bindings */
     fill_channel_bindings(encoded_request_body, &channel_bindings);
@@ -239,17 +256,40 @@ do_gss_init_sec_context(gss_ctx_id_t * context,
         goto cleanup;
     }
     
+    /* create the out PA_GSS */
+    pa_gss_out.pagss_token.data = output_gss_token.value;
+    pa_gss_out.pagss_token.length = output_gss_token.length;
+    if (pa_gss_in)
+        pa_gss_out.pagss_state = pa_gss_in->pagss_state;
+            
+
     /* encode the output PA-GSS if token is provided (PA-GSS-STATE is copied) */
     if (output_gss_token.length != 0 && padata_out != NULL){
-        rcode = encode_pa_gss(&output_gss_token, state, padata_out);
-        if (rcode)
+        krb5_pa_data *out = NULL;
+        rcode = encode_krb5_pa_gss(&pa_gss_out, &temp);
+        if (rcode){
+            printf("GSS-PA> ERror encoding KRB5_PA_GSS\n");
             goto cleanup;
+        }
+
+        out = malloc(sizeof(krb5_pa_data));
+        out->pa_type = KRB5_PADATA_GSS;
+        out->contents = (krb5_octet*) temp->data;
+        out->length = temp->length;
+        temp->data = NULL;
+        
+        *padata_out = out;
     }
+    
 
 cleanup:
-    gss_release_buffer(&min_stat, &input_gss_token);
-    gss_release_buffer(&min_stat, &output_gss_token);
-    krb5_free_data(NULL, state);
+    if (pa_gss_in){
+        krb5_free_data_contents(NULL, &pa_gss_in->pagss_token);
+        krb5_free_data_contents(NULL, &pa_gss_in->pagss_state.ciphertext);
+    }
+    free(pa_gss_in);
+    krb5_free_data_contents(NULL, &pa_gss_out.pagss_token);
+    krb5_free_data(NULL, temp);
     return rcode;                                                
 }
 
@@ -636,7 +676,7 @@ client_try_again(krb5_context context,
     
     /* Check the error type. Should not happend, but you never know... */
     if (error->error != KDC_ERR_MORE_PREAUTH_DATA_REQUIRED ){ 
-        printf("GSS-PA> Incorrect error type\n");        
+        printf("GSS-PA> Incorrect error type %d\n", error->error);        
         rcode = KRB5KDC_ERR_PREAUTH_FAILED;
         goto cleanup;
     }

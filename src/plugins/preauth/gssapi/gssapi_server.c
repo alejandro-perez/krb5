@@ -509,7 +509,7 @@ process_gss_continue_needed(krb5_context kcontext,
         goto cleanup;
     }
     
-    out[0]->contents = encoded_pa_gss->data;
+    out[0]->contents = (krb5_octet*) encoded_pa_gss->data;
     out[0]->length = encoded_pa_gss->length;
     out[0]->pa_type = KRB5_PADATA_GSS;    
     encoded_pa_gss->data = NULL;
@@ -576,7 +576,7 @@ process_gss_complete(gss_ctx_id_t *gss_ctx,
     if (rcode)
         goto cleanup;
             
-    reqctx->pa_rep[0]->contents = temp->data;        
+    reqctx->pa_rep[0]->contents = (krb5_octet*) temp->data;        
     reqctx->pa_rep[0]->length = temp->length;        
     reqctx->pa_rep[0]->pa_type = KRB5_PADATA_GSS;        
     temp->data = NULL;
@@ -660,7 +660,7 @@ server_verify(krb5_context context,
     print_buffer("GSS-PA> Received PA-GSS: ", data->contents, data->length);
 
     /* decode the PA-GSS */
-    in.data = data->contents;
+    in.data = (char*) data->contents;
     in.length = data->length;
     rcode = decode_krb5_pa_gss(&in, &pa_gss);
     if (rcode)
