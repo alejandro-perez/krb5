@@ -119,6 +119,11 @@ void ktest_make_sample_pkinit_supp_pub_info(krb5_pkinit_supp_pub_info *p);
 #ifdef ENABLE_LDAP
 void ktest_make_sample_ldap_seqof_key_data(ldap_seqof_key_data *p);
 #endif
+
+/* GSS preauth */
+void ktest_make_sample_pa_gss(krb5_pa_gss* p);
+void ktest_make_sample_pa_gss_state(krb5_pa_gss_state* p);
+
 /*----------------------------------------------------------------------*/
 
 void ktest_empty_authorization_data(krb5_authdata **ad);
@@ -199,6 +204,10 @@ void ktest_empty_pkinit_supp_pub_info(krb5_pkinit_supp_pub_info *p);
 #ifdef ENABLE_LDAP
 void ktest_empty_ldap_seqof_key_data(krb5_context, ldap_seqof_key_data *p);
 #endif
+
+/* GSS preauth */
+void ktest_empty_pa_gss(krb5_pa_gss* p);
+void ktest_empty_pa_gss_state(krb5_pa_gss_state* p);
 
 extern krb5_context test_context;
 extern char *sample_principal_name;

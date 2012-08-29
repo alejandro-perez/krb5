@@ -1039,3 +1039,27 @@ ktest_equal_reply_key_pack_draft9(krb5_reply_key_pack_draft9 *ref,
 }
 
 #endif /* not DISABLE_PKINIT */
+
+int
+ktest_equal_pa_gss(krb5_pa_gss *ref, krb5_pa_gss *var)
+{
+    int p = TRUE;
+    if (ref == var) return TRUE;
+    else if (ref == NULL || var == NULL) return FALSE;
+    
+    p = p && struct_equal(pagss_token, ktest_equal_data);
+    p = p && struct_equal(pagss_state, ktest_equal_enc_data);
+    return p;
+}
+
+int
+ktest_equal_pa_gss_state(krb5_pa_gss_state *ref, krb5_pa_gss_state *var)
+{
+    int p = TRUE;
+    if (ref == var) return TRUE;
+    else if (ref == NULL || var == NULL) return FALSE;
+    
+    p = p && struct_equal(pagssstate_expctx, ktest_equal_data);
+    p = p && scalar_equal(pagssstate_time);
+    return p;
+}

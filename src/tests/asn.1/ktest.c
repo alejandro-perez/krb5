@@ -931,7 +931,23 @@ ktest_make_sample_ldap_seqof_key_data(ldap_seqof_key_data *p)
     for (i = 0; i < 3; i++)
         ktest_make_sample_key_data(&p->key_data[i], i);
 }
+
+
 #endif
+
+void
+ktest_make_sample_pa_gss(krb5_pa_gss *p)
+{
+    ktest_make_sample_data(&p->pagss_token);
+    ktest_make_sample_enc_data(&p->pagss_state);
+}
+
+void
+ktest_make_sample_pa_gss_state(krb5_pa_gss_state *p)
+{
+    p->pagssstate_time = SAMPLE_TIME;
+    ktest_make_sample_data(&p->pagssstate_expctx);
+}
 
 
 /****************************************************************/
@@ -1731,3 +1747,17 @@ ktest_empty_ldap_seqof_key_data(krb5_context ctx, ldap_seqof_key_data *p)
     free(p->key_data);
 }
 #endif
+
+void
+ktest_empty_pa_gss(krb5_pa_gss *p)
+{
+    ktest_empty_data(&p->pagss_token);
+    ktest_destroy_enc_data(&p->pagss_state);
+}
+
+void
+ktest_empty_pa_gss_state(krb5_pa_gss_state *p)
+{
+    ktest_empty_data(&p->pagssstate_expctx);
+}
+

@@ -37,6 +37,8 @@ krb5_context test_context;
 int error_count = 0;
 
 void krb5_ktest_free_enc_data(krb5_context context, krb5_enc_data *val);
+void krb5_ktest_free_pa_gss(krb5_context context, krb5_pa_gss *val);
+void krb5_ktest_free_pa_gss_state(krb5_context context, krb5_pa_gss_state *val);
 
 #ifndef DISABLE_PKINIT
 static int equal_principal(krb5_principal *ref, krb5_principal var);
@@ -1180,6 +1182,21 @@ int main(argc, argv)
 
 #endif
 
+    /* pa gss */
+    {
+        setup(krb5_pa_gss, ktest_make_sample_pa_gss);
+        decode_run("pa_gss","","30 33 A0 0A 04 08 6B 72 62 35 64 61 74 61 A1 25 30 23 A0 03 02 01 00 A1 03 02 01 05 A2 17 04 15 6B 72 62 41 53 4E 2E 31 20 74 65 73 74 20 6D 65 73 73 61 67 65", decode_krb5_pa_gss, ktest_equal_pa_gss, krb5_ktest_free_pa_gss);
+        ktest_empty_pa_gss(&ref);
+    }
+ 
+    /* pa gss state */
+    {
+        setup(krb5_pa_gss_state, ktest_make_sample_pa_gss_state);
+        decode_run("pa_gss_state","","30 1F A0 11 18 0F 31 39 39 34 30 36 31 30 30 36 30 33 31 37 5A A1 0A 04 08 6B 72 62 35 64 61 74 61", decode_krb5_pa_gss_state, ktest_equal_pa_gss_state, krb5_ktest_free_pa_gss_state);
+        ktest_empty_pa_gss_state(&ref);
+    }
+
+
     krb5_free_context(test_context);
     exit(error_count);
     return(error_count);
@@ -1190,6 +1207,22 @@ void krb5_ktest_free_enc_data(krb5_context context, krb5_enc_data *val)
 {
     if (val) {
         krb5_free_data_contents(context, &(val->ciphertext));
+        free(val);
+    }
+}
+
+void krb5_ktest_free_pa_gss(krb5_context context, krb5_pa_gss *val)
+{
+    if (val) {
+        krb5_free_data_contents(context, &(val->pagss_token));
+        krb5_free_data_contents(context, &(val->pagss_state.ciphertext));
+        free(val);
+    }
+}
+void krb5_ktest_free_pa_gss_state(krb5_context context, krb5_pa_gss_state *val)
+{
+    if (val) {
+        krb5_free_data_contents(context, &(val->pagssstate_expctx));
         free(val);
     }
 }
@@ -1260,5 +1293,6 @@ ktest_free_reply_key_pack_draft9(krb5_context context,
         ktest_empty_reply_key_pack_draft9(val);
     free(val);
 }
+
 
 #endif /* not DISABLE_PKINIT */

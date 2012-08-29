@@ -679,7 +679,6 @@ main(argc, argv)
         krb5_fast_response fr;
         ktest_make_sample_fast_response(&fr);
         encode_run(fr, "fast_response", "", encode_krb5_fast_response);
-        ktest_empty_fast_response(&fr);
     }
     /****************************************************************/
     /* encode_krb5_pa_fx_fast_reply */
@@ -839,6 +838,25 @@ main(argc, argv)
         ktest_empty_pkinit_supp_pub_info(&info);
     }
 #endif /* not DISABLE_PKINIT */
+
+    /****************************************************************/
+    /* encode_pa_gss */
+    {
+        krb5_pa_gss pa_gss;
+        ktest_make_sample_pa_gss(&pa_gss);
+        encode_run(pa_gss, "pa_gss", "",
+                   encode_krb5_pa_gss);
+        ktest_empty_pa_gss(&pa_gss);
+    }
+    /****************************************************************/
+    /* encode_pa_gss_state */
+    {
+        krb5_pa_gss_state pa_gss_state;
+        ktest_make_sample_pa_gss_state(&pa_gss_state);
+        encode_run(pa_gss_state, "pa_gss_state", "",
+                   encode_krb5_pa_gss_state);
+        ktest_empty_pa_gss_state(&pa_gss_state);
+    }
 #ifdef ENABLE_LDAP
     {
         ldap_seqof_key_data skd;

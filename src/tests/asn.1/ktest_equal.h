@@ -145,4 +145,7 @@ generic(ktest_equal_reply_key_pack, krb5_reply_key_pack);
 generic(ktest_equal_reply_key_pack_draft9, krb5_reply_key_pack_draft9);
 #endif /* not DISABLE_PKINIT */
 
+generic(ktest_equal_pa_gss, krb5_pa_gss);
+generic(ktest_equal_pa_gss_state, krb5_pa_gss_state);
+
 #endif

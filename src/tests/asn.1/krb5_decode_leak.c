@@ -61,6 +61,23 @@ free_cred_enc_part_whole(krb5_context ctx,
     free(val);
 }
 
+
+void krb5_ktest_free_pa_gss(krb5_context context, krb5_pa_gss *val)
+{
+    if (val) {
+        krb5_free_data_contents(context, &(val->pagss_token));
+        krb5_free_data_contents(context, &(val->pagss_state.ciphertext));
+        free(val);
+    }
+}
+void krb5_ktest_free_pa_gss_state(krb5_context context, krb5_pa_gss_state *val)
+{
+    if (val) {
+        krb5_free_data_contents(context, &(val->pagssstate_expctx));
+        free(val);
+    }
+}
+
 int
 main(int argc, char **argv)
 {
@@ -697,6 +714,25 @@ main(int argc, char **argv)
                   decode_krb5_pa_fx_fast_reply, krb5_free_enc_data);
         ktest_destroy_enc_data(&enc);
     }
+    /****************************************************************/
+    /* encode_krb5_pa_gss */
+    {
+        krb5_pa_gss pa_gss, *tmp;
+        ktest_make_sample_pa_gss(&pa_gss);
+        leak_test(pa_gss, encode_krb5_pa_gss, decode_krb5_pa_gss,
+                  krb5_ktest_free_pa_gss);
+        ktest_empty_pa_gss(&pa_gss);
+    }
+    /****************************************************************/
+    /* encode_krb5_pa_gss_state */
+    {
+        krb5_pa_gss_state pa_gss_state, *tmp;
+        ktest_make_sample_pa_gss_state(&pa_gss_state);
+        leak_test(pa_gss_state, encode_krb5_pa_gss_state, decode_krb5_pa_gss_state,
+                  krb5_ktest_free_pa_gss_state);
+        ktest_empty_pa_gss_state(&pa_gss_state);
+    }
     krb5_free_context(test_context);
     return 0;
 }
+
