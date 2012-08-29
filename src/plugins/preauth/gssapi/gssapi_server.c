@@ -120,18 +120,14 @@ cleanup:
 
 /* decodes an encrypted PA_GSS_STATE */
 static krb5_error_code
-decode_pa_gss_state(krb5_context kcontext,
-                    krb5_kdc_req *request,
-                    krb5_data *pa_gss_state,
-                    krb5_timestamp *timestamp_out,
-                    gss_buffer_t exported_sec_ctx_token)
+decrypt_pa_gss_state(krb5_context kcontext,
+                    krb5_enc_data *encrypted_data,
+                    krb5_data **decrypted_data_out)
 {
     krb5_error_code rcode = 0;
-    krb5_timestamp ts = 0;
     krb5_kvno kvno = 0;
-    krb5_enc_data *encrypted_data = NULL;
     krb5_keyblock kdc_keyblock = {0, 0, 0, NULL};
-    krb5_data decrypted_data = {0, 0, NULL};
+    krb5_data *decrypted_data = NULL;
     
     /* obtain KDC key and KVNO */
     rcode = get_krbtgt_key(kcontext, &kdc_keyblock, &kvno);
@@ -140,65 +136,58 @@ decode_pa_gss_state(krb5_context kcontext,
         goto cleanup;
     }
 
-    /* decode data */
-    rcode = decode_krb5_enc_data(pa_gss_state, &encrypted_data);
-    if (rcode){
-        printf("GSS-PA> Cannot decode data %d\n", rcode);
-        goto cleanup;
-    }
-    
     /* decrypt data */
-    decrypted_data.data = malloc(encrypted_data->ciphertext.length);
-    decrypted_data.length = encrypted_data->ciphertext.length;
+    decrypted_data = malloc(sizeof(krb5_data));
+    decrypted_data->data = malloc(encrypted_data->ciphertext.length);
+    decrypted_data->length = encrypted_data->ciphertext.length;
     rcode = krb5_c_decrypt(kcontext, &kdc_keyblock, PA_GSS_KEYUSAGE, NULL, 
-                           encrypted_data, &decrypted_data);    
+                           encrypted_data, decrypted_data);    
     if (rcode){
-        printf("GSS-PA> Cannot decrypt data %d\n", rcode);
+        printf("GSS-PA> Cannot decrypt PA-GSS-STATE data\n");
         goto cleanup;
     }
+
+    *decrypted_data_out = decrypted_data;
+    decrypted_data = NULL;
     
-    
-    memcpy(&ts, decrypted_data.data, 4);
-    ts = ntohl(ts);
-    
-    /* build the GSS_BUFFER with the decrypted data */
-    fill_gss_buffer_from_data(&decrypted_data.data[4], decrypted_data.length - 4, 
-                              exported_sec_ctx_token);
-    
-    *timestamp_out = ts;
-    return 0;       
 cleanup:
     krb5_free_keyblock_contents(kcontext, &kdc_keyblock);   
-    krb5_free_data_contents(kcontext, &decrypted_data); 
-    krb5_free_enc_data(kcontext, encrypted_data);
-   return rcode;
-
+    krb5_free_data(kcontext, decrypted_data); 
+    return rcode;
 }                    
 
 
-/* tries to import a received state (if present and valid) */
+/* tries to decrypt, decode and import a received state (if present and valid)*/
 static void 
 process_pa_gss_state(krb5_context kcontext,
-                    krb5_kdc_req *request,
-                    krb5_data *pa_gss_state,
+                    krb5_enc_data *encrypted_pagss_state,
                     gss_ctx_id_t *context_out)
 {
     OM_uint32 maj_stat = 0, min_stat = 0;
     krb5_error_code rcode = 0;      
-    krb5_timestamp timestamp = 0, ts_current = 0;
-    gss_buffer_desc exported_sec_ctx_token = GSS_C_EMPTY_BUFFER;
+    krb5_timestamp ts_current = 0;
+    gss_buffer_desc temp = GSS_C_EMPTY_BUFFER;
+    krb5_data *decrypted_pagss_state = NULL;
+    krb5_pa_gss_state *pa_gss_state = NULL;
     
-    if (pa_gss_state == NULL){
+    if (encrypted_pagss_state->ciphertext.length == 0){
         printf("GSS-PA> PA-GSS-STATE not found. Assuming new context\n");    
         return;
     }
     
-    /* decode PA_GSS_STATE */
-    rcode = decode_pa_gss_state(kcontext, request, pa_gss_state, &timestamp, 
-                                &exported_sec_ctx_token);
+    /* descrypt PA_GSS_STATE */
+    rcode = decrypt_pa_gss_state(kcontext, encrypted_pagss_state, 
+                                 &decrypted_pagss_state);
     if (rcode){
-        printf("GSS-PA> Could not decode PA-GSS-STATE\n");
+        printf("GSS-PA> Could not crypt PA-GSS-STATE. Assuming new context\n");
         goto cleanup;
+    }
+
+    /* decode PA_GSS_STATE */
+    rcode = decode_krb5_pa_gss_state(decrypted_pagss_state, &pa_gss_state);
+    if (rcode){
+        printf("GSS-PA> Cannot decode GSS_PA_STATE data\n");
+        goto cleanup;    
     }
 
     /* get current timestamp */
@@ -209,15 +198,16 @@ process_pa_gss_state(krb5_context kcontext,
     }
         
     /* check timestamp is not older than 1 second */
-    if (ts_current - timestamp > 1){
+    if (ts_current - pa_gss_state->pagssstate_time > 1){
         printf("GSS-PA> Timestamp too old. Rejecting state. CURRENT = %d, "
-                "STATE_TS = %d\n", ts_current, timestamp);
+                "STATE_TS = %d\n", ts_current, pa_gss_state->pagssstate_time);
         goto cleanup;            
     }
     
-    /* import state */
-    maj_stat = gss_import_sec_context(&min_stat, &exported_sec_ctx_token, 
-                                      context_out);
+    /* import state (alias) */
+    temp.value = pa_gss_state->pagssstate_expctx.data;
+    temp.length = pa_gss_state->pagssstate_expctx.length;    
+    maj_stat = gss_import_sec_context(&min_stat, &temp, context_out);
     if (maj_stat != GSS_S_COMPLETE){
         printf("GSS-PA> Invalid PA-GSS-STATE found. Assuming new context\n");
         goto cleanup;
@@ -226,35 +216,22 @@ process_pa_gss_state(krb5_context kcontext,
     printf("GSS-PA> Valid PA-GSS-STATE found! Updating context value\n");
 
 cleanup:
-    gss_release_buffer(&min_stat, &exported_sec_ctx_token);
+    krb5_free_data(kcontext, decrypted_pagss_state);     
+    if (pa_gss_state)
+        krb5_free_data_contents(kcontext, &pa_gss_state->pagssstate_expctx);     
+    free(pa_gss_state);
 }
 
 /* generate a cookie to be sent to the client */
 static krb5_error_code 
-encode_pa_gss_state(krb5_context kcontext,
-                    krb5_timestamp timestamp,
-                    gss_buffer_t exported_sec_ctx_token, 
-                    krb5_data **pa_gss_state_out)
+encrypt_pa_gss_state(krb5_context kcontext,
+                     krb5_data *decrypted_data, 
+                     krb5_enc_data *encrypted_data_out)
 {
     krb5_error_code rcode = 0;
     krb5_kvno kvno = 0;
-    krb5_data plaintext = {0, 0, NULL};
     krb5_keyblock kdc_keyblock = {0, 0, 0, NULL};
-    krb5_enc_data encrypted_data = {0, 0, 0, {0, 0, NULL}};
-    krb5_data *encoded_data = NULL;    
     
-    /* prepare plainstate */
-    plaintext.length = exported_sec_ctx_token->length + 4;
-    plaintext.data = malloc(plaintext.length);
-    
-    /* copy timestamp */
-    timestamp = htonl(timestamp);
-    memcpy(plaintext.data, &timestamp, 4);
-
-    /* copy exported_sec_ctx_token */
-    memcpy(&plaintext.data[4], exported_sec_ctx_token->value, 
-           exported_sec_ctx_token->length);;
-
     /* get KDC key and KVNO */
     rcode = get_krbtgt_key(kcontext, &kdc_keyblock, &kvno);
     if (rcode){
@@ -264,28 +241,17 @@ encode_pa_gss_state(krb5_context kcontext,
                                                
     /* encrypt data */
     rcode = krb5_encrypt_helper(kcontext, &kdc_keyblock, PA_GSS_KEYUSAGE, 
-                                &plaintext, &encrypted_data);    
+                                decrypted_data, encrypted_data_out);    
     if (rcode){
         printf("GSS-PA> Cannot encrypt data %d\n", rcode);
         goto cleanup;
     }
     
     /* update KVNO */
-    encrypted_data.kvno = kvno;    
-    
-    /* encode the data */
-    rcode = encode_krb5_enc_data(&encrypted_data, &encoded_data);
-    if (rcode){
-        printf("GSS-PA> Cannot encode data %d\n", rcode);
-        goto cleanup;
-    }
-    
-    *pa_gss_state_out = encoded_data;
+    encrypted_data_out->kvno = kvno;    
     
 cleanup:
     krb5_free_keyblock_contents(kcontext, &kdc_keyblock);    
-    krb5_free_data_contents(kcontext, &encrypted_data.ciphertext);
-    krb5_free_data_contents(kcontext, &plaintext);
     return rcode;
 }
 
@@ -293,13 +259,13 @@ cleanup:
 static krb5_error_code 
 generate_pa_gss_state(krb5_context kcontext,
                       gss_ctx_id_t *gss_context, 
-                      krb5_data **pa_gss_state_out)
+                      krb5_enc_data *pa_gss_state_out)
 {
     OM_uint32 maj_stat = 0, min_stat = 0;  
     krb5_error_code rcode = 0;
-    krb5_timestamp ts_current = 0;
     gss_buffer_desc exported_sec_ctx_token = GSS_C_EMPTY_BUFFER;
-
+    krb5_data *decrypted_pa_gss_state = NULL;
+    krb5_pa_gss_state pa_gss_state;
     
     /* obtain context */
     maj_stat = gss_export_sec_context(&min_stat, gss_context, 
@@ -311,23 +277,35 @@ generate_pa_gss_state(krb5_context kcontext,
         goto cleanup;
     }
 
+    /* fill the krb5_pa_gss_state struct (alias) */
+    pa_gss_state.pagssstate_expctx.data = exported_sec_ctx_token.value;
+    pa_gss_state.pagssstate_expctx.length = exported_sec_ctx_token.length;
 
     /* get current timestamp */
-    rcode = krb5_timeofday(kcontext, &ts_current);
+    rcode = krb5_timeofday(kcontext, &pa_gss_state.pagssstate_time);
     if (rcode){
         printf("GSS-PA> Could not get current timestamp\n");
         goto cleanup;            
     }
 
-    rcode = encode_pa_gss_state(kcontext, ts_current, &exported_sec_ctx_token, 
-                                pa_gss_state_out);
+    /* encode the PA_GSS_STATE */
+    rcode = encode_krb5_pa_gss_state(&pa_gss_state, &decrypted_pa_gss_state);
     if (rcode){
-        printf("GSS-PA> Could not encode PA-GSS-STATE\n");
+        printf("GSS-PA> Could not encode PA_GSS_STATE\n");
+        goto cleanup;     
+    }
+
+    /* encrypt the PA_GSS_STATE */    
+    rcode = encrypt_pa_gss_state(kcontext, decrypted_pa_gss_state, 
+                                 pa_gss_state_out);
+    if (rcode){
+        printf("GSS-PA> Could not encrypt PA-GSS-STATE\n");
         goto cleanup;
     }
 
 cleanup:
     gss_release_buffer(&min_stat, &exported_sec_ctx_token);
+    krb5_free_data(kcontext, decrypted_pa_gss_state);
     return rcode;
 }
 
@@ -503,22 +481,39 @@ process_gss_continue_needed(krb5_context kcontext,
 {    
     krb5_error_code rcode = 0;
     krb5_pa_data **out = NULL;
-    krb5_data *new_gss_state = NULL;
+    krb5_data *encoded_pa_gss = NULL;
+    krb5_pa_gss pa_gss;
+
+    pa_gss.pagss_state.ciphertext.length = 0;
+    pa_gss.pagss_state.ciphertext.data = 0;
+
 
     /* create the PA-GSS to be included in either KRB_ERROR or AS_REP message */
     out = malloc(2 * sizeof(krb5_pa_data*));
-    out[0] = NULL;
+    out[0] = malloc(sizeof(krb5_pa_data));
     out[1] = NULL;
 
     /* generate the new PA-GSS-STATE */
-    rcode = generate_pa_gss_state(kcontext, gss_ctx, &new_gss_state);
+    rcode = generate_pa_gss_state(kcontext, gss_ctx, &pa_gss.pagss_state);
     if (rcode)
         goto cleanup;
     
-    rcode = encode_pa_gss(output_gss_token, new_gss_state, &out[0]);
-    if (rcode)
+    /* update the krb5_pa_gss.pagss_token */
+    pa_gss.pagss_token.data = output_gss_token->value;
+    pa_gss.pagss_token.length = output_gss_token->length;
+    
+    /* encode the PA-GSS */
+    rcode = encode_krb5_pa_gss(&pa_gss, &encoded_pa_gss);
+    if (rcode){
+        printf("GSS-PA> Cannot encode PA_GSS\n");
         goto cleanup;
-
+    }
+    
+    out[0]->contents = encoded_pa_gss->data;
+    out[0]->length = encoded_pa_gss->length;
+    out[0]->pa_type = KRB5_PADATA_GSS;    
+    encoded_pa_gss->data = NULL;
+    
     print_buffer("GSS-PA> Sent KRB_ERROR with PA-GSS: ", out[0]->contents, 
                  out[0]->length);      
     
@@ -528,7 +523,8 @@ process_gss_continue_needed(krb5_context kcontext,
 
 cleanup:
     krb5_free_pa_data(NULL, out);
-    krb5_free_data(kcontext, new_gss_state);
+    krb5_free_data(kcontext, encoded_pa_gss);
+    krb5_free_data_contents(kcontext, &pa_gss.pagss_state.ciphertext);
     return rcode;
 }
 
@@ -546,7 +542,9 @@ process_gss_complete(gss_ctx_id_t *gss_ctx,
     gss_buffer_desc gss_exported_name = GSS_C_EMPTY_BUFFER;
     krb5_error_code rcode = 0;
     OM_uint32 maj_stat = 0, min_stat = 0;  
-    krb5_authdata **auth_list = NULL;      
+    krb5_authdata **auth_list = NULL;  
+    krb5_pa_gss pa_gss;
+    krb5_data *temp = NULL;    
     OM_uint32 expected_flags = GSS_C_MUTUAL_FLAG | GSS_C_REPLAY_FLAG | 
                                GSS_C_SEQUENCE_FLAG | GSS_C_TRANS_FLAG;
 
@@ -566,12 +564,22 @@ process_gss_complete(gss_ctx_id_t *gss_ctx,
 
     /* include the PA-GSS in the request context to be included in the AS_REP */
     reqctx->pa_rep = malloc(2 * sizeof(krb5_pa_data*));
-    reqctx->pa_rep[0] = NULL;
+    reqctx->pa_rep[0] = malloc(sizeof(krb5_pa_data));
     reqctx->pa_rep[1] = NULL;
     
-    rcode = encode_pa_gss(output_gss_token, NULL, &reqctx->pa_rep[0]);
+    /* fill the krb5_pa_gss struct */
+    pa_gss.pagss_token.data = output_gss_token->value;
+    pa_gss.pagss_token.length = output_gss_token->length;
+    pa_gss.pagss_state.ciphertext.length = 0;
+    
+    rcode = encode_krb5_pa_gss(&pa_gss, &temp);
     if (rcode)
         goto cleanup;
+            
+    reqctx->pa_rep[0]->contents = temp->data;        
+    reqctx->pa_rep[0]->length = temp->length;        
+    reqctx->pa_rep[0]->pa_type = KRB5_PADATA_GSS;        
+    temp->data = NULL;
 
     print_buffer("GSS-PA> Sent AS_REP with PA-GSS: ",
                  reqctx->pa_rep[0]->contents, reqctx->pa_rep[0]->length);      
@@ -618,6 +626,7 @@ process_gss_complete(gss_ctx_id_t *gss_ctx,
 cleanup:
     gss_release_buffer(&min_stat, &gss_exported_name);
     krb5_free_authdata(NULL, auth_list);
+    krb5_free_data(NULL, temp);
     return rcode;
 }
 
@@ -641,24 +650,31 @@ server_verify(krb5_context context,
     gss_buffer_desc output_gss_token = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc input_gss_token = GSS_C_EMPTY_BUFFER;
     gss_name_t gss_clientname = NULL;
-    krb5_data *pa_gss_state = NULL;
     gss_ctx_id_t gss_ctx = GSS_C_NO_CONTEXT;
     krb5_pa_data **e_data = NULL;
     krb5_authdata **auth_list = NULL;
     struct gss_channel_bindings_struct channel_bindings;
+    krb5_pa_gss *pa_gss = NULL;
+    krb5_data in;
                    
     print_buffer("GSS-PA> Received PA-GSS: ", data->contents, data->length);
 
     /* decode the PA-GSS */
-    rcode = decode_pa_gss(data, &input_gss_token, &pa_gss_state);
+    in.data = data->contents;
+    in.length = data->length;
+    rcode = decode_krb5_pa_gss(&in, &pa_gss);
     if (rcode)
         goto cleanup;
-    
-    /* try to import the received PA-GSS-STATE (if any) */
-    process_pa_gss_state(context, request, pa_gss_state, &gss_ctx);
+
+    /* try to decrypt, decode and import the received PA-GSS-STATE */
+    process_pa_gss_state(context, &pa_gss->pagss_state, &gss_ctx);
          
     /* prepare channel bindings struct */
     fill_channel_bindings(cb->request_body(context, rock), &channel_bindings);
+    
+    /* make a GSS buffer with an alias of the data */
+    input_gss_token.value = pa_gss->pagss_token.data;
+    input_gss_token.length = pa_gss->pagss_token.length;    
 
     /* Call gss_accept_sec_context */ 
     maj_stat = gss_accept_sec_context(
@@ -695,10 +711,13 @@ server_verify(krb5_context context,
     }
     
 cleanup:
+    if (pa_gss){
+        krb5_free_data_contents(context, &pa_gss->pagss_token);
+        krb5_free_data_contents(context, &pa_gss->pagss_state.ciphertext);
+    }
+    free(pa_gss);        
     gss_release_name(&min_stat, &gss_clientname);    
-    gss_release_buffer(&min_stat, &input_gss_token);    
-    krb5_free_data(context, pa_gss_state);    
-    gss_release_buffer(&min_stat, &output_gss_token);           
+    gss_release_buffer(&min_stat, &output_gss_token);               
     (*respond)(arg, rcode, (krb5_kdcpreauth_modreq) reqctx, e_data, auth_list);            
 }
 
@@ -765,8 +784,7 @@ server_get_flags(krb5_context kcontext, krb5_preauthtype pa_type)
 }
 
 static krb5_preauthtype supported_server_pa_types[] = {
-    KRB5_PADATA_GSS, 
-    0
+    KRB5_PADATA_GSS, 0
 };
 
 krb5_error_code
