@@ -1,21 +1,6 @@
 /***************************************************************************
 *   Copyright (C) 2012 by                                                 *
 *   Alejandro Perez Mendez     alex@um.es                                 *
-*                                                                         *
-*   This library is free software; you can redistribute it and/or         *
-*   modify it under the terms of the GNU Lesser General Public            *
-*   License as published by the Free Software Foundation; either          *
-*   version 2.1 of the License, or (at your option) any later version.    *
-*                                                                         *
-*   This library is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU     *
-*   Lesser General Public License for more details.                       *
-*                                                                         *
-*   You should have received a copy of the GNU Lesser General Public      *
-*   License along with this library; if not, write to the Free Software   *
-*   Foundation, Inc., 51 Franklin St, Fifth Floor,                        *
-*   Boston, MA  02110-1301  USA                                           *
 ***************************************************************************/
 
 #include "autoconf.h"
@@ -38,19 +23,18 @@
 
 #include "gssapi_util.h"
 
-/* we need these services since the transport is cleartext XXX verify */
-static OM_uint32 requested_flags = GSS_C_MUTUAL_FLAG | GSS_C_REPLAY_FLAG | 
-                                   GSS_C_SEQUENCE_FLAG;
+/* we need these services since the transport is cleartext */
+#define REQUESTED_FLAGS (GSS_C_MUTUAL_FLAG | GSS_C_REPLAY_FLAG | GSS_C_SEQUENCE_FLAG)
 
 /* Definition of the plugin context */
-typedef struct gsspreauth_plugin_context_t {
-    char use_default_gss_cred;  /* Use default GSS client cledentials? */
+typedef struct {
+    char use_default_gss_cred;  /* Use default GSS client credentials ? */
     char federated;             /* User is federated -> is not in the KDC DB */
     gss_OID mech_type;          /* GSS mechanism to be used */
 }gssapi_plugin_context_t;
 
 /* Definition of client's per-request context struct */
-typedef struct gsspreauth_req_context_t {
+typedef struct {
     gss_ctx_id_t context;       /* GSS-API contexts related with the request */
     gss_name_t targetname;      /* GSS target name of the KDC */
     gss_cred_id_t client_cred;  /* GSS user name of the client */
@@ -67,9 +51,11 @@ static krb5_error_code
 client_plugin_init(krb5_context context,
                    krb5_clpreauth_moddata *moddata_out)
 {
-    gssapi_plugin_context_t *out = malloc(sizeof(gssapi_plugin_context_t));
+    krb5_error_code rcode = 0;
+
+    gssapi_plugin_context_t *out = k5alloc(sizeof(gssapi_plugin_context_t), &rcode);
     if (out == NULL)
-        return ENOMEM;
+        goto cleanup;
 
     out->use_default_gss_cred = 0;
     out->federated = 0;
@@ -77,13 +63,14 @@ client_plugin_init(krb5_context context,
 
     *moddata_out = (krb5_clpreauth_moddata)out;
 
-    return 0;
+cleanup:
+    return rcode;
 }
 
 static void
 client_plugin_fini(krb5_context context, krb5_clpreauth_moddata moddata)
 {
-    OM_uint32 min_stat=0, maj_stat=0;
+    OM_uint32 min_stat = 0, maj_stat = GSS_S_COMPLETE;
     gssapi_plugin_context_t *ctx = (gssapi_plugin_context_t*) moddata;
 
     maj_stat = gss_release_oid(&min_stat, &ctx->mech_type);
@@ -97,10 +84,13 @@ client_req_init(krb5_context context,
                 krb5_clpreauth_moddata moddata, 
                 krb5_clpreauth_modreq *modreq_out)
 {    
+    krb5_error_code rcode = 0;
     gssapi_req_context_t *gss_req_context = NULL;
      
     /* alloc a new context */
-    gss_req_context = malloc(sizeof(gssapi_req_context_t));
+    gss_req_context = k5alloc(sizeof(gssapi_req_context_t), &rcode);
+    if (gss_req_context == NULL)
+        return;
 
     /* establish default values */
     gss_req_context->context = GSS_C_NO_CONTEXT;
@@ -109,6 +99,7 @@ client_req_init(krb5_context context,
     
     // output
     *modreq_out = (krb5_clpreauth_modreq) gss_req_context;
+    
 }
 
 /* Deletes the request context */
@@ -117,7 +108,7 @@ client_req_fini(krb5_context context,
                 krb5_clpreauth_moddata moddata,
                 krb5_clpreauth_modreq modreq)
 {    
-    OM_uint32 min_stat=0, maj_stat=0;
+    OM_uint32 min_stat = 0, maj_stat = GSS_S_COMPLETE;
     gssapi_req_context_t *reqctx = (gssapi_req_context_t*) modreq;
     
     if (reqctx == NULL)
@@ -153,18 +144,16 @@ client_gic_opt(krb5_context kcontext,
                const char *value)
 {
     gssapi_plugin_context_t* ctx = (gssapi_plugin_context_t*) moddata;
-    OM_uint32 maj_stat = 0, min_stat = 0;
+    OM_uint32 maj_stat = GSS_S_COMPLETE, min_stat = 0;
         
     fprintf(stdout, "GSS-PA> client_gic_opt: received '%s' = '%s'\n",
             attr, value);
             
-    if (strcmp(attr, "gss_default") == 0)
+    if (strcmp(attr, "gss_default") == 0){
         ctx->use_default_gss_cred = 1;
-
-    else if (strcmp(attr, "gss_federated") == 0)
+    } else if (strcmp(attr, "gss_federated") == 0){
         ctx->federated = 1;
-
-    else if (strcmp(attr, "gss_mech") == 0){
+    } else if (strcmp(attr, "gss_mech") == 0){
         gss_buffer_desc temp = GSS_C_EMPTY_BUFFER;
         temp.length = strlen(value);
         temp.value = (void*) value;
@@ -195,7 +184,7 @@ do_gss_init_sec_context(gss_ctx_id_t * context,
                         krb5_data *encoded_request_body,                         
                         OM_uint32 expected_maj_stat)
 {
-    OM_uint32 maj_stat = 0, min_stat = 0;
+    OM_uint32 maj_stat = GSS_S_COMPLETE, min_stat = 0;
     gss_buffer_desc input_gss_token = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc output_gss_token = GSS_C_EMPTY_BUFFER;
     struct gss_channel_bindings_struct channel_bindings;
@@ -272,7 +261,10 @@ do_gss_init_sec_context(gss_ctx_id_t * context,
             goto cleanup;
         }
 
-        out = malloc(sizeof(krb5_pa_data));
+        out = k5alloc(sizeof(krb5_pa_data), &rcode);
+        if (out == NULL)
+            goto cleanup;
+        
         out->pa_type = KRB5_PADATA_GSS;
         out->contents = (krb5_octet*) temp->data;
         out->length = temp->length;
@@ -299,7 +291,7 @@ acquire_client_gss_cred(krb5_context context,
                        gss_OID mech_type,
                        gss_cred_id_t* gss_cred_out)
 {
-    OM_uint32 maj_stat = 0, min_stat = 0;
+    OM_uint32 maj_stat = GSS_S_COMPLETE, min_stat = 0;
     gss_buffer_desc username = GSS_C_EMPTY_BUFFER;
     gss_name_t gss_username = GSS_C_NO_NAME;
     krb5_error_code rcode = 0;
@@ -327,7 +319,11 @@ acquire_client_gss_cred(krb5_context context,
         printf("GSS-PA> Adquiring GSS credentials for <%s>\n", username_txt);
         
         /* import the client name */
-        fill_gss_buffer_from_data(username_txt, strlen(username_txt), &username);
+        rcode = fill_gss_buffer_from_data(username_txt, strlen(username_txt),
+                                          &username);
+        if (rcode)
+            goto cleanup;
+                                                      
         maj_stat = gss_import_name(&min_stat, &username, GSS_C_NO_OID, 
                                    &gss_username);    
         
@@ -373,7 +369,7 @@ static krb5_error_code
 get_name_from_gss_credential(gss_cred_id_t credential,
                              char **name_out)
 {
-    OM_uint32 maj_stat = 0, min_stat = 0;
+    OM_uint32 maj_stat = GSS_S_COMPLETE, min_stat = 0;
     krb5_error_code rcode = 0;
     gss_name_t gss_name = GSS_C_NO_NAME;
     gss_buffer_desc gss_name_txt = GSS_C_EMPTY_BUFFER;
@@ -394,7 +390,10 @@ get_name_from_gss_credential(gss_cred_id_t credential,
         goto cleanup;                
     }                                 
 
-    out = malloc(gss_name_txt.length + 1);
+    out = k5alloc(gss_name_txt.length + 1, &rcode);
+    if (out == NULL)
+        goto cleanup;    
+    
     memcpy(out, gss_name_txt.value, gss_name_txt.length);
     out[gss_name_txt.length] = '\0';
     
@@ -417,7 +416,7 @@ create_first_request(krb5_context context,
                      krb5_data *encoded_request_body, 
                      krb5_pa_data ***pa_data_out)
 {
-    OM_uint32 maj_stat = 0, min_stat = 0;
+    OM_uint32 maj_stat = GSS_S_COMPLETE, min_stat = 0;
     krb5_error_code rcode = 0;
     krb5_pa_data **out = NULL;
     gss_buffer_desc targetname_txt = GSS_C_EMPTY_BUFFER;
@@ -425,7 +424,10 @@ create_first_request(krb5_context context,
     krb5_principal new_principal = NULL;
 
     /* initilize local output variable */
-    out = malloc(2 * sizeof(krb5_pa_data *));
+    out = k5alloc(2 * sizeof(krb5_pa_data *), &rcode);
+    if (out == NULL)
+        goto cleanup;
+    
     out[0] = NULL;
     out[1] = NULL;    
     
@@ -471,7 +473,11 @@ create_first_request(krb5_context context,
     if (rcode)
         goto cleanup;        
         
-    fill_gss_buffer_from_data(kdcname, strlen(kdcname), &targetname_txt);
+    rcode = fill_gss_buffer_from_data(kdcname, strlen(kdcname), 
+                                      &targetname_txt);
+    if (rcode)
+        goto cleanup;                                      
+                                      
     maj_stat = gss_import_name(&min_stat, &targetname_txt, gss_nt_service_name, 
                                &reqctx->targetname);
     if (maj_stat != GSS_S_COMPLETE) {
@@ -482,7 +488,7 @@ create_first_request(krb5_context context,
         
     rcode = do_gss_init_sec_context(&reqctx->context, reqctx->client_cred, 
                                     reqctx->targetname, pluginctx->mech_type,
-                                    requested_flags, NULL, NULL, &out[0],
+                                    REQUESTED_FLAGS, NULL, NULL, &out[0],
                                     encoded_request_body, 
                                     GSS_S_CONTINUE_NEEDED); 
     if (rcode)
@@ -513,7 +519,7 @@ process_as_rep(krb5_context context,
                krb5_data *encoded_request_body, 
                krb5_pa_data *pa_data)
 {
-    OM_uint32 maj_stat = 0, min_stat = 0, ret_flags = 0;
+    OM_uint32 maj_stat = GSS_S_COMPLETE, min_stat = 0, ret_flags = 0;
     krb5_error_code rcode = 0;
     gss_buffer_desc prf_in = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc prf_key = GSS_C_EMPTY_BUFFER;  
@@ -535,15 +541,15 @@ process_as_rep(krb5_context context,
        GSS_S_COMPLETE */
     rcode = do_gss_init_sec_context(&reqctx->context, reqctx->client_cred,
                                     reqctx->targetname, pluginctx->mech_type, 
-                                    requested_flags, &ret_flags, pa_data, NULL, 
+                                    REQUESTED_FLAGS, &ret_flags, pa_data, NULL, 
                                     encoded_request_body, GSS_S_COMPLETE); 
     if (rcode)
         goto cleanup;
 
     /* check ret_flags */
     printf("GSS-PA> Requested flags=%x. Returned flags=%x. AND=%x\n", 
-           requested_flags, ret_flags, requested_flags & ret_flags);
-    if ( (requested_flags & ret_flags) != requested_flags){
+           REQUESTED_FLAGS, ret_flags, REQUESTED_FLAGS & ret_flags);
+    if ( (REQUESTED_FLAGS & ret_flags) != REQUESTED_FLAGS){
         printf("GSS-PA> Some security service cannot be supplied\n");
         rcode = KRB5KDC_ERR_PREAUTH_FAILED;
         goto cleanup;    
@@ -554,11 +560,13 @@ process_as_rep(krb5_context context,
     krb5_c_keylengths(0, enctype, &keybytes, &keylen);                
     
     /* reserve enough space for the prf_in */            
-    prf_in.value = malloc(200); 
+    prf_in.value = k5alloc(MAX_PRF_SIZE, &rcode); 
+    if (prf_in.value == NULL)
+        goto cleanup;    
     
     /* prf.in = 'KRB-GSS' | request->nonce
-       Always < 200 bytes. No need to check snprintf output */ 
-    snprintf(prf_in.value, 200, "KRB-GSS%d", request->nonce);            
+       Always < MAX_PRF_SIZE bytes. No need to check snprintf output */ 
+    snprintf(prf_in.value, MAX_PRF_SIZE, "KRB-GSS%d", request->nonce);            
     prf_in.length = strlen(prf_in.value);
 
     /* generate the AS_KEY */
@@ -670,7 +678,10 @@ client_try_again(krb5_context context,
     krb5_error_code rcode = 0;
     
     /* initilize local output variable */
-    out = malloc(2 * sizeof(krb5_pa_data *));
+    out = k5alloc(2 * sizeof(krb5_pa_data *), &rcode);
+    if (out == NULL)
+        goto cleanup;
+        
     out[0] = NULL;
     out[1] = NULL;
     
@@ -702,7 +713,7 @@ client_try_again(krb5_context context,
     /* call the GSS-API to obtain a token for the next request */
     rcode = do_gss_init_sec_context(&reqctx->context, reqctx->client_cred, 
                                    reqctx->targetname, pluginctx->mech_type, 
-                                   requested_flags, NULL, pa_gss, &out[0], 
+                                   REQUESTED_FLAGS, NULL, pa_gss, &out[0], 
                                    encoded_request_body, GSS_S_CONTINUE_NEEDED); 
     if (rcode)
         goto cleanup;

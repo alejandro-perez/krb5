@@ -1,3 +1,7 @@
+/***************************************************************************
+*   Copyright (C) 2012 by                                                 *
+*   Alejandro Perez Mendez     alex@um.es                                 *
+***************************************************************************/
 #include "autoconf.h"
 
 #ifdef HAVE_ERRNO_H
@@ -8,11 +12,13 @@
 #endif
 
 #include <stdio.h>
+#include <k5-int.h>
 #include <krb5/krb5.h>
 #include <gssapi/gssapi_generic.h>
 #include "gssapi_util.h"
 
 #include <arpa/inet.h>
+
 
 static void 
 display_gss_status_1(OM_uint32 code, 
@@ -76,26 +82,19 @@ print_buffer_txt(char *text,
         fprintf(stderr, "]\n");
 }
 
-void 
+krb5_error_code 
 fill_gss_buffer_from_data(void *data, 
                           unsigned int length, 
                           gss_buffer_t gss_buffer)
 {
+    krb5_error_code rcode = 0;
     gss_buffer->length = length;
-    gss_buffer->value = malloc(length);
+    gss_buffer->value = k5alloc(length, &rcode);
+    if (gss_buffer->value == NULL)
+        return rcode;
+        
     memcpy(gss_buffer->value, data, length);
-}
-
-void 
-fill_pa_data_from_data(void *data, 
-                       unsigned int length, 
-                       krb5_preauthtype patype, 
-                       krb5_pa_data *padata)
-{
-    padata->pa_type = patype;
-    padata->length = length;
-    padata->contents = malloc(length);
-    memcpy(padata->contents, data, length);         
+    return 0;
 }
 
 void

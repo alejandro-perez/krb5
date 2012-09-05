@@ -1,3 +1,7 @@
+/***************************************************************************
+*   Copyright (C) 2012 by                                                 *
+*   Alejandro Perez Mendez     alex@um.es                                 *
+***************************************************************************/
 #include "autoconf.h"
 
 #ifdef HAVE_ERRNO_H
@@ -16,6 +20,10 @@
 #define AUTHZ_GSS_ATTRIBUTE     200
 #define PA_GSS_KEYUSAGE         512
 
+
+/* indicate the max size of a PRF result for safety array alloc */
+#define MAX_PRF_SIZE            200
+
 /* prints a data array in hex format, prepending the indicated text string */
 void print_buffer(char *text, unsigned char* data, int length);
 
@@ -23,12 +31,8 @@ void print_buffer(char *text, unsigned char* data, int length);
 void print_buffer_txt(char *text, unsigned char* data, int length);
 
 /* fills a gss buffer with a copy of the data provided */
-void fill_gss_buffer_from_data(void *data, unsigned int length, 
+krb5_error_code fill_gss_buffer_from_data(void *data, unsigned int length, 
                                gss_buffer_t gss_buffer);
-
-/* fills a krb5_pa_data with a copy of the data provided */
-void fill_pa_data_from_data(void *data, unsigned int length, 
-                            krb5_preauthtype patype, krb5_pa_data *padata);
 
 /* prints the GSS error in a textual form */
 void display_gss_status(OM_uint32 maj_stat, OM_uint32 min_stat);
