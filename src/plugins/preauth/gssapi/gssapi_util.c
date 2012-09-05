@@ -19,9 +19,8 @@
 
 #include <arpa/inet.h>
 
-
-static void 
-display_gss_status_1(OM_uint32 code, 
+static void
+display_gss_status_1(OM_uint32 code,
                      int type)
 {
     OM_uint32 maj_stat, min_stat;
@@ -30,7 +29,7 @@ display_gss_status_1(OM_uint32 code,
 
     msg_ctx = 0;
     while (1) {
-        maj_stat = gss_display_status(&min_stat, code, type, GSS_C_NULL_OID, 
+        maj_stat = gss_display_status(&min_stat, code, type, GSS_C_NULL_OID,
                                       &msg_ctx, &msg);
         printf("GSS-PA> GSS-API error: %s\n", (char *) msg.value);
         gss_release_buffer(&min_stat, &msg);
@@ -41,35 +40,35 @@ display_gss_status_1(OM_uint32 code,
 }
 
 void
-display_gss_status(OM_uint32 maj_stat, 
+display_gss_status(OM_uint32 maj_stat,
                    OM_uint32 min_stat)
 {
     display_gss_status_1(maj_stat, GSS_C_GSS_CODE);
     display_gss_status_1(min_stat, GSS_C_MECH_CODE);
 }
 
-void 
-print_buffer(char *text, 
-             unsigned char* data, 
+void
+print_buffer(char *text,
+             unsigned char* data,
              int length)
 {
     int i;
     fprintf(stderr, "%s\n        [", text);
-    for (i=0; i<length - 1; i++){
+    for (i=0; i<length - 1; i++) {
         if (i && !(i%20) )
             fprintf(stderr, "\n         ");
         fprintf(stderr, "%02X:", data[i]);
     }
-    
+
     if (length > 0)
         fprintf(stderr, "%02X] (%d)\n", data[i], length);
     else
         fprintf(stderr, "](%d)\n", length);
 }
 
-void 
-print_buffer_txt(char *text, 
-                 unsigned char* data, 
+void
+print_buffer_txt(char *text,
+                 unsigned char* data,
                  int length)
 {
     int i;
@@ -82,9 +81,9 @@ print_buffer_txt(char *text,
         fprintf(stderr, "]\n");
 }
 
-krb5_error_code 
-fill_gss_buffer_from_data(void *data, 
-                          unsigned int length, 
+krb5_error_code
+fill_gss_buffer_from_data(void *data,
+                          unsigned int length,
                           gss_buffer_t gss_buffer)
 {
     krb5_error_code rcode = 0;
@@ -92,13 +91,13 @@ fill_gss_buffer_from_data(void *data,
     gss_buffer->value = k5alloc(length, &rcode);
     if (gss_buffer->value == NULL)
         return rcode;
-        
+
     memcpy(gss_buffer->value, data, length);
     return 0;
 }
 
 void
-fill_channel_bindings(krb5_data* encoded_request_body, 
+fill_channel_bindings(krb5_data* encoded_request_body,
                       gss_channel_bindings_t channel_bindings)
 {
     channel_bindings->initiator_addrtype = GSS_C_AF_UNSPEC;

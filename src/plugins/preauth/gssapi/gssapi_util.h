@@ -31,7 +31,7 @@ void print_buffer(char *text, unsigned char* data, int length);
 void print_buffer_txt(char *text, unsigned char* data, int length);
 
 /* fills a gss buffer with a copy of the data provided */
-krb5_error_code fill_gss_buffer_from_data(void *data, unsigned int length, 
+krb5_error_code fill_gss_buffer_from_data(void *data, unsigned int length,
                                gss_buffer_t gss_buffer);
 
 /* prints the GSS error in a textual form */
@@ -39,5 +39,5 @@ void display_gss_status(OM_uint32 maj_stat, OM_uint32 min_stat);
 
 /* fills the channel_bindings struct with the encoded_request_body as
    application data */
-void fill_channel_bindings(krb5_data* encoded_request_body, 
+void fill_channel_bindings(krb5_data* encoded_request_body,
                            gss_channel_bindings_t channel_bindings);
