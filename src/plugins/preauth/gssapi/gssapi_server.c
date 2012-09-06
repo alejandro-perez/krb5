@@ -409,8 +409,6 @@ enumerate_attributes(OM_uint32 *minor,
     return major;
 }
 
-/* processses the client name received into the AS_REQ and the one obtained
-   throught the GSS-API. */
 static krb5_error_code
 process_client_name(krb5_enc_tkt_part *enc_tkt_reply,
                     gss_name_t gss_clientname)
@@ -419,8 +417,10 @@ process_client_name(krb5_enc_tkt_part *enc_tkt_reply,
     OM_uint32 maj_stat = GSS_S_COMPLETE, min_stat = 0;
     char *gss_cname = NULL, *as_req_cname = NULL;
     gss_buffer_desc gss_clientname_txt = GSS_C_EMPTY_BUFFER;
-
-    /* get the user name from the AS_REQ */
+    krb5_principal federated_princ = NULL;
+    gss_name_t gss_imported_cname = GSS_C_NO_NAME;
+    
+    /* get the user name from the AS_REQ in text format */
     rcode = krb5_unparse_name_flags(NULL, enc_tkt_reply->client,
                                     KRB5_PRINCIPAL_UNPARSE_NO_REALM,
                                     &as_req_cname);
@@ -448,9 +448,18 @@ process_client_name(krb5_enc_tkt_part *enc_tkt_reply,
 
     printf("GSS-PA> Client name from GSS-API: [%s]\n", gss_cname);
 
+    /* build the WELLKNOWN/FEDERATED principal */
+    rcode = krb5_build_principal_ext(
+        NULL, &federated_princ, 0, "",
+        (unsigned int) strlen(KRB5_WELLKNOWN_NAMESTR), KRB5_WELLKNOWN_NAMESTR, 
+        (unsigned int)strlen(KRB5_FEDERATED_PRINCSTR), KRB5_FEDERATED_PRINCSTR, 
+        0
+    );       
+       
     /* if cname was WELLKNOW/FEDERATED, then update the name with the one
-       supplied by the GSS-API */
-    if (strcmp(as_req_cname, "WELLKNOWN/FEDERATED") == 0) {
+       supplied by the GSS-API */   
+    if (krb5_principal_compare_any_realm(NULL, enc_tkt_reply->client, 
+                                         federated_princ)) {
         krb5_principal new_principal = NULL;
 
         /* build a new kerberos principal using the clientname from GSS.
@@ -471,18 +480,36 @@ process_client_name(krb5_enc_tkt_part *enc_tkt_reply,
     }
 
     /* check that supplied name is consistent with expected NAME */
-    else if (strcmp(as_req_cname, gss_cname) != 0) {
-        printf("GSS-PA> Name mismatch. User cannot be authenticated. \n");
-        rcode = KRB5KDC_ERR_PREAUTH_FAILED;
-        goto cleanup;
+    else{
+        int eq = 0;
+        
+        rcode = gss_import_name_from_krb5_principal(enc_tkt_reply->client,
+                                                    &gss_imported_cname);
+        if (rcode)
+            goto cleanup;        
+    
+        maj_stat = gss_compare_name(&min_stat, gss_clientname, gss_imported_cname, &eq);
+        if (maj_stat != GSS_S_COMPLETE){
+            display_gss_status(maj_stat, min_stat);
+            rcode = KRB5KDC_ERR_PREAUTH_FAILED;
+            goto cleanup;
+        }
+    
+        if (eq == 0) {
+            printf("GSS-PA> Name mismatch. User cannot be authenticated. \n");
+            rcode = KRB5KDC_ERR_PREAUTH_FAILED;
+            goto cleanup;
+        }
     }
-
 cleanup:
     free(as_req_cname);
     free(gss_cname);
+    gss_release_name(&min_stat, &gss_imported_cname);
     gss_release_buffer(&min_stat, &gss_clientname_txt);
+    krb5_free_principal(NULL, federated_princ);
     return rcode;
 }
+
 
 
 /* processes a GSS_S_CONTINUE_NEEDED result */

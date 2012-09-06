@@ -20,6 +20,8 @@
 #define AUTHZ_GSS_ATTRIBUTE     200
 #define PA_GSS_KEYUSAGE         512
 
+/* Federated principal name */
+#define KRB5_FEDERATED_PRINCSTR "FEDERATED"
 
 /* indicate the max size of a PRF result for safety array alloc */
 #define MAX_PRF_SIZE            200
@@ -41,3 +43,7 @@ void display_gss_status(OM_uint32 maj_stat, OM_uint32 min_stat);
    application data */
 void fill_channel_bindings(krb5_data* encoded_request_body,
                            gss_channel_bindings_t channel_bindings);
+                           
+/* imports a GSS_NAME from a KRB5_PRINC */
+krb5_error_code gss_import_name_from_krb5_principal(krb5_const_principal princ, 
+                                                    gss_name_t *name);

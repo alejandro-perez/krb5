@@ -110,3 +110,37 @@ fill_channel_bindings(krb5_data* encoded_request_body,
     channel_bindings->application_data.value = encoded_request_body->data;
 }
 
+/* imports a GSS_NAME from a KRB5_PRINC */
+krb5_error_code gss_import_name_from_krb5_principal(krb5_const_principal princ, 
+                                                    gss_name_t *name)
+{
+    krb5_error_code rv = 0;
+    OM_uint32 maj_stat = GSS_S_COMPLETE, min_stat = 0;    
+    char *username_txt = NULL;
+    gss_buffer_desc buffer = GSS_C_EMPTY_BUFFER;
+        
+    rv = krb5_unparse_name_flags(NULL, princ, KRB5_PRINCIPAL_UNPARSE_NO_REALM,
+                                 &username_txt);
+    if (rv)
+        goto cleanup;
+
+    /* import the client name */
+    rv = fill_gss_buffer_from_data(username_txt, strlen(username_txt),
+                                   &buffer);
+    if (rv)
+        goto cleanup;
+
+    maj_stat = gss_import_name(&min_stat, &buffer, GSS_C_NO_OID, name);
+
+    if (maj_stat != GSS_S_COMPLETE) {
+        rv = KRB5KDC_ERR_PREAUTH_FAILED;
+        display_gss_status(maj_stat, min_stat);
+        goto cleanup;
+    }
+
+cleanup:
+    free(username_txt);
+    gss_release_buffer(&min_stat, &buffer);    
+    return rv;
+}                                                    
+
