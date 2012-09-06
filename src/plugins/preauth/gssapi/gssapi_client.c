@@ -29,8 +29,8 @@
 /* Definition of the plugin context */
 typedef struct {
     krb5_boolean use_default_gss_cred;  /* Use default GSS client credentials ? */
-    krb5_boolean federated;             /* User is federated -> is not in the KDC DB */
-    gss_OID mech_type;                  /* GSS mechanism to be used */
+    krb5_boolean federated;     /* User is federated -> is not in the KDC DB */
+    gss_OID mech_type;          /* GSS mechanism to be used */
 } gssapi_plugin_context_t;
 
 /* Definition of client's per-request context struct */
@@ -293,11 +293,9 @@ acquire_client_gss_cred(krb5_context context,
                        gss_cred_id_t* gss_cred_out)
 {
     OM_uint32 maj_stat = GSS_S_COMPLETE, min_stat = 0;
-    gss_buffer_desc username = GSS_C_EMPTY_BUFFER;
     gss_name_t gss_username = GSS_C_NO_NAME;
     krb5_error_code rcode = 0;
     gss_cred_id_t out = GSS_C_NO_CREDENTIAL;
-    char *username_txt = NULL;
     gss_OID_set desired_mech = GSS_C_NO_OID_SET;
 
     /* initialize output variable */
@@ -311,28 +309,9 @@ acquire_client_gss_cred(krb5_context context,
 
     /* read username from the AS_REQ (if any) */
     if (cname) {
-        rcode = krb5_unparse_name_flags(context, cname,
-                                        KRB5_PRINCIPAL_UNPARSE_NO_REALM,
-                                        &username_txt);
+        rcode = gss_import_name_from_krb5_principal(cname, &gss_username);
         if (rcode)
             goto cleanup;
-
-        printf("GSS-PA> Adquiring GSS credentials for <%s>\n", username_txt);
-
-        /* import the client name */
-        rcode = fill_gss_buffer_from_data(username_txt, strlen(username_txt),
-                                          &username);
-        if (rcode)
-            goto cleanup;
-
-        maj_stat = gss_import_name(&min_stat, &username, GSS_C_NO_OID,
-                                   &gss_username);
-
-        if (maj_stat != GSS_S_COMPLETE) {
-            rcode = KRB5KDC_ERR_PREAUTH_FAILED;
-            display_gss_status(maj_stat, min_stat);
-            goto cleanup;
-        }
     } else {
         printf("GSS-PA> Adquiring default GSS credentials\n");
     }
@@ -359,7 +338,6 @@ acquire_client_gss_cred(krb5_context context,
     out = GSS_C_NO_CREDENTIAL;
 
 cleanup:
-    gss_release_buffer(&min_stat, &username);
     gss_release_name(&min_stat, &gss_username);
     gss_release_cred(&min_stat, &out);
     return rcode;
@@ -436,17 +414,19 @@ create_first_request(krb5_context context,
     /* acquire client GSS credentials, using the name provided by the client,
        or the default credentials */
     if (pluginctx->use_default_gss_cred)
-        rcode = acquire_client_gss_cred(context, NULL, pluginctx->mech_type, &reqctx->client_cred);
+        rcode = acquire_client_gss_cred(context, NULL, pluginctx->mech_type, 
+                                        &reqctx->client_cred);
     else
-        rcode = acquire_client_gss_cred(context, request->client, pluginctx->mech_type,
+        rcode = acquire_client_gss_cred(context, request->client, 
+                                        pluginctx->mech_type,
                                         &reqctx->client_cred);
     if (rcode)
         goto cleanup;
 
     /* Update the cname of the AS_REQ in acordance with the provided options */
     if (pluginctx->federated) {
-        cname = "WELLKNOWN";
-        cname2 = "FEDERATED";
+        cname = strdup(KRB5_WELLKNOWN_NAMESTR);
+        cname2 = strdup(KRB5_FEDERATED_PRINCSTR);
     } else {
         rcode = get_name_from_gss_credential(reqctx->client_cred, &cname);
         if (rcode)
@@ -502,6 +482,8 @@ create_first_request(krb5_context context,
 
 cleanup:
     krb5_free_pa_data(context, out);
+    free(cname);
+    free(cname2);
     krb5_free_principal(context, new_principal);
     return rcode;
 }
@@ -642,7 +624,8 @@ client_process(krb5_context context,
        initiate the context establishment */
     if (pa_data == NULL || pa_data->length == 0) {
         rcode = create_first_request(context, pluginctx, reqctx, request,
-                                     pa_data, encoded_request_body, pa_data_out);
+                                     pa_data, encoded_request_body, 
+                                     pa_data_out);
     } else {
         /* If there is PA_DATA, then this is an AS_REP */
         rcode = process_as_rep(context, pluginctx, reqctx, cb, rock, request,
